@@ -6,8 +6,9 @@ button without changing the taskbar's native look — including the compact
 
 ## Behavior
 
-- Leaves Windows in native **combine** presentation mode, preserving the
-  48-DIP icon-only vertical layout.
+- Forces native **combine** presentation in Explorer while the taskbar is on
+  the left or right, preserving the 48-DIP icon-only layout without changing
+  the saved Windows preference.
 - Creates a separate native task group and button for each newly opened window,
   adjacent to windows from the same application.
 - Preserves native running indicators, progress, badges, overlays, highlights,
@@ -27,9 +28,11 @@ mod. Each resolved window receives a temporary unique AppID suffix. Supporting
 hooks strip or translate the suffix where Explorer needs the application's real
 identity, including pins, icons, launches, and jump lists.
 
-Unlike earlier experiments, this version never changes `TaskbarGlomLevel`,
-taskbar XAML, labels, button dimensions, frame measurements, system-tray
-measurements, HWND size, or appbar reservation.
+The mod intercepts Explorer's `TaskbarGlomLevel` reads only while the native
+taskbar is vertical, returning combine mode in memory. It never changes the
+registry, taskbar XAML, labels, button dimensions, frame measurements,
+system-tray measurements, HWND size, or appbar reservation. The implementation
+doesn't contain Windows 10 or ExplorerPatcher compatibility paths.
 
 ## Current target
 
