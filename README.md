@@ -24,10 +24,11 @@ implementation and caused the taskbar XAML content to collapse. The current
 version never changes frame sizes or `HasLabel`. It forces native `Never
 combine`, then hooks `TaskListButton::UpdateVisualStates` only to collapse the
 existing `LabelControl` and its grid column after Windows finishes updating the
-button. Running/progress indicators and every other visual-state child are
-untouched. `ExperienceToggleButton::UpdateVisualStates` performs the equivalent
-label-only change for the Start button. Explorer remains solely responsible for
-the outer HWND, appbar reservation, and all internal frame dimensions.
+button and constrain that button root to 48 DIPs. Running/progress indicators
+and every other visual-state child are untouched.
+`ExperienceToggleButton::UpdateVisualStates` performs the equivalent label-only
+change for the Start button. Explorer remains solely responsible for the outer
+HWND, appbar reservation, and all internal frame dimensions.
 
 ## Current target
 

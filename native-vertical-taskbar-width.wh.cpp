@@ -2,7 +2,7 @@
 // @id              native-vertical-taskbar-width
 // @name            Native Compact Vertical Taskbar
 // @description     Keep native Windows 11 vertical taskbar buttons compact and separate without restyling native indicators.
-// @version         0.8
+// @version         0.9
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @include         explorer.exe
@@ -180,6 +180,9 @@ void ApplyCompactLabelState(FrameworkElement taskListButton) {
     }
 
     if (g_unloading) {
+        taskListButton.ClearValue(FrameworkElement::WidthProperty());
+        taskListButton.ClearValue(FrameworkElement::MinWidthProperty());
+        taskListButton.ClearValue(FrameworkElement::MaxWidthProperty());
         columns.GetAt(1).Width(GridLength{
             .Value = 1,
             .GridUnitType = GridUnitType::Auto,
@@ -190,6 +193,9 @@ void ApplyCompactLabelState(FrameworkElement taskListButton) {
 
     // Change only the native label column. Running/progress indicators and all
     // other visual-state children remain owned by Windows.
+    taskListButton.MinWidth(0);
+    taskListButton.MaxWidth(48);
+    taskListButton.Width(48);
     labelControl.Visibility(Visibility::Collapsed);
     columns.GetAt(1).Width(GridLength{
         .Value = 0,
@@ -197,7 +203,7 @@ void ApplyCompactLabelState(FrameworkElement taskListButton) {
     });
 
     if (!g_loggedLabelCollapse.exchange(true)) {
-        Wh_Log(L"Collapsed the native LabelControl column");
+        Wh_Log(L"Collapsed the native LabelControl column and button width");
     }
 }
 
