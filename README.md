@@ -1,12 +1,17 @@
-# Native Vertical Taskbar Width
+# Native Compact Vertical Taskbar
 
-A private/personal Windhawk mod that changes only the thickness of Microsoft's
-native Windows 11 left/right taskbar.
+A private/personal Windhawk mod that makes Microsoft's native Windows 11
+left/right taskbar compact:
 
-The mod leaves Windows in charge of orientation, taskbar buttons, labels,
-grouping, running/open-window indicators, progress, badges, overlays, hover and
-pressed states, tray, clock, flyouts, and hit testing. It doesn't emulate a
-vertical taskbar and doesn't depend on the older Windhawk vertical-taskbar mod.
+- 48-DIP taskbar width by default.
+- Labels always hidden.
+- Running windows always kept as separate buttons.
+
+The mod leaves Windows in charge of orientation, taskbar buttons,
+running/open-window indicators, progress, badges, overlays, hover and pressed
+states, tray, clock, flyouts, and hit testing. It doesn't emulate a vertical
+taskbar and doesn't depend on the older Windhawk vertical-taskbar mod or the
+broad **Taskbar Labels for Windows 11** mod.
 
 ## Current target
 
@@ -32,7 +37,9 @@ Three matching frame-size layers are adjusted only for `ABE_LEFT` and
 3. `TrayUI::GetMinSize`, plus Explorer's `ABM_QUERYPOS` appbar negotiation,
    supplies the DPI-scaled outer taskbar window and reserved work-area width.
 
-No taskbar-button or indicator visual state is hooked.
+For the two fixed behavioral changes, the mod makes Explorer read `Never`
+combine and returns `HasLabel=false` from the native taskbar view model. No
+taskbar-button or indicator visual state is hooked.
 
 ## Install as a local mod
 
@@ -43,7 +50,12 @@ No taskbar-button or indicator visual state is hooked.
 4. Choose **Compile Mod**, exit editing mode, and enable the mod.
 5. Open the mod's settings to change **Vertical taskbar width**.
 
-Disable or remove the mod in Windhawk to restore Microsoft's native dimensions.
+Disable **Taskbar Labels for Windows 11** while this mod is enabled; the compact
+mod replaces the only two behaviors needed from it without its cosmetic
+settings and visual modifications.
+
+Disable or remove the mod in Windhawk to restore Microsoft's native dimensions,
+labels, and grouping behavior.
 
 ## Origin and license
 

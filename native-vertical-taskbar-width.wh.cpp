@@ -1,8 +1,8 @@
 // ==WindhawkMod==
 // @id              native-vertical-taskbar-width
-// @name            Native Vertical Taskbar Width
-// @description     Adjust the width of the native Windows 11 left/right taskbar.
-// @version         0.1
+// @name            Native Compact Vertical Taskbar
+// @description     Narrow the native Windows 11 vertical taskbar, hide labels, and keep buttons separate.
+// @version         0.2
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @include         explorer.exe
@@ -17,11 +17,16 @@
 
 // ==WindhawkModReadme==
 /*
-# Native Vertical Taskbar Width
+# Native Compact Vertical Taskbar
 
-Adjusts only the thickness of Microsoft's native Windows 11 vertical taskbar.
-Windows continues to own taskbar orientation, layout, buttons, labels,
-grouping, running indicators, progress, badges, animations, tray, and flyouts.
+Adjusts the thickness of Microsoft's native Windows 11 vertical taskbar, hides
+taskbar labels, and keeps running windows as separate buttons. Windows
+continues to own taskbar orientation, layout, buttons, running indicators,
+progress, badges, animations, tray, and flyouts.
+
+The label/grouping behavior is intentionally fixed and has no cosmetic
+settings. It replaces the need for the much broader **Taskbar Labels for
+Windows 11** mod, which should be disabled while this mod is enabled.
 
 This personal mod is tested against Windows 11 25H2 build 26200.9278 (x64),
 Taskbar.View.dll 2607.28001.200.0, SystemTray.dll 2607.28000.0.0, and Windhawk
@@ -36,7 +41,8 @@ bottom.
 4. Exit editing mode and enable the mod.
 
 Change **Vertical taskbar width** in the mod settings. Disable or remove the mod
-normally in Windhawk to restore the native taskbar dimensions.
+normally in Windhawk to restore the native taskbar dimensions, label behavior,
+and grouping behavior.
 */
 // ==/WindhawkModReadme==
 
@@ -61,8 +67,10 @@ struct {
 std::atomic<bool> g_unloading;
 std::atomic<bool> g_taskbarViewHooked;
 std::atomic<bool> g_systemTrayHooked;
+std::atomic<bool> g_groupingRefreshToggle;
 std::atomic<unsigned> g_logEpoch{1};
 std::atomic<int> g_lastLoggedEdge{-1};
+thread_local bool g_insideHasLabels;
 
 struct LogGate {
     std::atomic<unsigned> epoch{};
@@ -73,6 +81,8 @@ LogGate g_taskbarFrameLogGate;
 LogGate g_systemTrayFrameLogGate;
 LogGate g_secondaryTrayFrameLogGate;
 LogGate g_appBarLogGate;
+LogGate g_hideLabelsLogGate;
+LogGate g_groupingLogGate;
 
 WINUSERAPI UINT WINAPI GetDpiForWindow(HWND hwnd);
 
@@ -292,6 +302,103 @@ double WINAPI SystemTraySecondaryController_GetFrameSize_Hook(
     return RequestedWidth();
 }
 
+using ITaskbarAppItemViewModel_HasLabels_t = bool(WINAPI*)(void* pThis);
+ITaskbarAppItemViewModel_HasLabels_t
+    ITaskbarAppItemViewModel_HasLabels_Original;
+
+bool WINAPI ITaskbarAppItemViewModel_HasLabels_Hook(void* pThis) {
+    bool wasInsideHasLabels = g_insideHasLabels;
+    g_insideHasLabels = true;
+    bool result = ITaskbarAppItemViewModel_HasLabels_Original(pThis);
+    g_insideHasLabels = wasInsideHasLabels;
+    return result;
+}
+
+using TaskListViewModel_get_HasLabel_t =
+    HRESULT(WINAPI*)(void* pThis, bool* hasLabel);
+
+TaskListViewModel_get_HasLabel_t
+    TaskListWindowViewModel_get_HasLabel_Original;
+
+HRESULT WINAPI TaskListWindowViewModel_get_HasLabel_Hook(void* pThis,
+                                                         bool* hasLabel) {
+    HRESULT result =
+        TaskListWindowViewModel_get_HasLabel_Original(pThis, hasLabel);
+
+    if (!g_unloading && g_insideHasLabels && SUCCEEDED(result) && hasLabel &&
+        IsNativeVerticalTaskbar()) {
+        *hasLabel = false;
+        if (ShouldLog(g_hideLabelsLogGate)) {
+            Wh_Log(L"Hiding native taskbar labels without modifying button "
+                   L"visual states");
+        }
+    }
+
+    return result;
+}
+
+TaskListViewModel_get_HasLabel_t
+    TaskListGroupViewModel_get_HasLabel_Original;
+
+HRESULT WINAPI TaskListGroupViewModel_get_HasLabel_Hook(void* pThis,
+                                                        bool* hasLabel) {
+    HRESULT result =
+        TaskListGroupViewModel_get_HasLabel_Original(pThis, hasLabel);
+
+    if (!g_unloading && g_insideHasLabels && SUCCEEDED(result) && hasLabel &&
+        IsNativeVerticalTaskbar()) {
+        *hasLabel = false;
+        if (ShouldLog(g_hideLabelsLogGate)) {
+            Wh_Log(L"Hiding native taskbar labels without modifying button "
+                   L"visual states");
+        }
+    }
+
+    return result;
+}
+
+using RegGetValueW_t = decltype(&RegGetValueW);
+RegGetValueW_t RegGetValueW_Original;
+
+LONG WINAPI RegGetValueW_Hook(HKEY key,
+                              LPCWSTR subKey,
+                              LPCWSTR valueName,
+                              DWORD flags,
+                              LPDWORD type,
+                              PVOID data,
+                              LPDWORD dataSize) {
+    LONG result = RegGetValueW_Original(key, subKey, valueName, flags, type,
+                                       data, dataSize);
+
+    if (g_unloading || key != HKEY_CURRENT_USER || !subKey || !valueName ||
+        _wcsicmp(
+            subKey,
+            LR"(SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced)") !=
+            0 ||
+        (_wcsicmp(valueName, L"TaskbarGlomLevel") != 0 &&
+         _wcsicmp(valueName, L"MMTaskbarGlomLevel") != 0) ||
+        flags != RRF_RT_REG_DWORD || !data || !dataSize ||
+        *dataSize != sizeof(DWORD) || !IsNativeVerticalTaskbar()) {
+        return result;
+    }
+
+    DWORD original = result == ERROR_SUCCESS ? *static_cast<DWORD*>(data) : 0;
+    DWORD finalValue = g_groupingRefreshToggle ? 0 : 2;
+    *static_cast<DWORD*>(data) = finalValue;
+
+    if (type) {
+        *type = REG_DWORD;
+    }
+    result = ERROR_SUCCESS;
+
+    if (!g_groupingRefreshToggle && ShouldLog(g_groupingLogGate)) {
+        Wh_Log(L"Forcing %s to Never combine: %u->%u", valueName, original,
+               finalValue);
+    }
+
+    return result;
+}
+
 auto WINAPI SHAppBarMessage_Hook(DWORD message, PAPPBARDATA data) {
     auto result = SHAppBarMessage_Original(message, data);
 
@@ -370,6 +477,23 @@ bool HookTaskbarViewSymbols(HMODULE module) {
             &TaskbarConfiguration_GetFrameSize_Original,
             TaskbarConfiguration_GetFrameSize_Hook,
         },
+        {
+            {LR"(public: __cdecl winrt::impl::consume_Taskbar_ITaskbarAppItemViewModel<struct winrt::Taskbar::ITaskbarAppItemViewModel>::HasLabel(void)const )"},
+            &ITaskbarAppItemViewModel_HasLabels_Original,
+            ITaskbarAppItemViewModel_HasLabels_Hook,
+        },
+        {
+            {LR"(public: virtual int __cdecl winrt::impl::produce<struct winrt::Taskbar::implementation::TaskListWindowViewModel,struct winrt::Taskbar::ITaskbarAppItemViewModel>::get_HasLabel(bool *))"},
+            &TaskListWindowViewModel_get_HasLabel_Original,
+            TaskListWindowViewModel_get_HasLabel_Hook,
+            true,
+        },
+        {
+            {LR"(public: virtual int __cdecl winrt::impl::produce<struct winrt::Taskbar::implementation::TaskListGroupViewModel,struct winrt::Taskbar::ITaskbarAppItemViewModel>::get_HasLabel(bool *))"},
+            &TaskListGroupViewModel_get_HasLabel_Original,
+            TaskListGroupViewModel_get_HasLabel_Hook,
+            true,
+        },
     };
 
     if (!WindhawkUtils::HookSymbols(module, hooks, ARRAYSIZE(hooks))) {
@@ -377,7 +501,13 @@ bool HookTaskbarViewSymbols(HMODULE module) {
         return false;
     }
 
-    Wh_Log(L"Hooked Taskbar.View.dll frame sizing");
+    if (!TaskListWindowViewModel_get_HasLabel_Original &&
+        !TaskListGroupViewModel_get_HasLabel_Original) {
+        Wh_Log(L"No native taskbar label getter symbols were found");
+        return false;
+    }
+
+    Wh_Log(L"Hooked Taskbar.View.dll frame sizing and native label state");
     return true;
 }
 
@@ -451,6 +581,25 @@ void RequestTaskbarLayout() {
         0);
 }
 
+void RequestTaskbarBehaviorRefresh() {
+    HWND taskbarWindow = FindWindow(L"Shell_TrayWnd", nullptr);
+    if (!IsCurrentProcessTaskbarWindow(taskbarWindow)) {
+        Wh_Log(L"Primary native taskbar window wasn't found");
+        return;
+    }
+
+    if (!g_unloading && IsNativeVerticalTaskbar()) {
+        // Make Explorer observe a temporary grouping-mode change so it rebuilds
+        // existing taskbar view models, then apply the fixed final behavior.
+        g_groupingRefreshToggle = true;
+        SendMessage(taskbarWindow, WM_SETTINGCHANGE, 0, 0);
+        g_groupingRefreshToggle = false;
+        Sleep(400);
+    }
+
+    SendMessage(taskbarWindow, WM_SETTINGCHANGE, 0, 0);
+}
+
 BOOL Wh_ModInit() {
     Wh_Log(L"Initializing for Windows 11 native vertical taskbar");
     LoadSettings();
@@ -488,8 +637,17 @@ BOOL Wh_ModInit() {
         return FALSE;
     }
 
+    HMODULE kernelBase = GetModuleHandle(L"kernelbase.dll");
+    auto regGetValueW = reinterpret_cast<RegGetValueW_t>(
+        GetProcAddress(kernelBase, "RegGetValueW"));
+    if (!regGetValueW ||
+        !WindhawkUtils::SetFunctionHook(regGetValueW, RegGetValueW_Hook,
+                                        &RegGetValueW_Original)) {
+        Wh_Log(L"Failed to hook native taskbar grouping settings");
+        return FALSE;
+    }
+
     if (delayedModuleHookNeeded) {
-        HMODULE kernelBase = GetModuleHandle(L"kernelbase.dll");
         auto loadLibraryExW = reinterpret_cast<LoadLibraryExW_t>(
             GetProcAddress(kernelBase, "LoadLibraryExW"));
         if (!loadLibraryExW ||
@@ -506,6 +664,7 @@ BOOL Wh_ModInit() {
 
 void Wh_ModAfterInit() {
     RequestTaskbarLayout();
+    RequestTaskbarBehaviorRefresh();
 }
 
 void Wh_ModBeforeUninit() {
@@ -513,10 +672,12 @@ void Wh_ModBeforeUninit() {
     g_unloading = true;
     g_logEpoch.fetch_add(1);
     RequestTaskbarLayout();
+    RequestTaskbarBehaviorRefresh();
 }
 
 void Wh_ModSettingsChanged() {
     LoadSettings();
     g_logEpoch.fetch_add(1);
     RequestTaskbarLayout();
+    RequestTaskbarBehaviorRefresh();
 }
