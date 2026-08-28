@@ -27,8 +27,12 @@ existing `LabelControl` and its grid column after Windows finishes updating the
 button and constrain that button root to 48 DIPs. Running/progress indicators
 and every other visual-state child are untouched.
 `ExperienceToggleButton::UpdateVisualStates` performs the equivalent label-only
-change for the Start button. Explorer remains solely responsible for the outer
-HWND, appbar reservation, and all internal frame dimensions.
+change for the Start button. The shared `TaskbarFrameRepeater` is constrained
+and left-aligned to the same 48-DIP width so compact buttons aren't centered in
+the old labeled extent. Explorer remains solely responsible for all other
+internal frame dimensions. Once all labeled child widths are compact,
+`TrayUI::GetMinSize::cx` and appbar negotiation keep the outer HWND and reserved
+work area at 48 DIPs.
 
 ## Current target
 

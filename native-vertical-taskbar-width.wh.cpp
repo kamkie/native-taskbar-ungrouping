@@ -2,12 +2,12 @@
 // @id              native-vertical-taskbar-width
 // @name            Native Compact Vertical Taskbar
 // @description     Keep native Windows 11 vertical taskbar buttons compact and separate without restyling native indicators.
-// @version         0.9
+// @version         1.0
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @include         explorer.exe
 // @architecture    x86-64
-// @compilerOptions -lole32 -loleaut32 -lruntimeobject
+// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lshcore
 // @license         GPL-3.0
 // ==/WindhawkMod==
 
@@ -61,6 +61,27 @@ std::atomic<int> g_lastLoggedEdge{-1};
 std::atomic<bool> g_loggedGroupingOverride;
 std::atomic<bool> g_loggedLabelCollapse;
 std::atomic<bool> g_loggedStartCollapse;
+std::atomic<bool> g_loggedFrameClamp;
+std::atomic<bool> g_loggedWidthOverride;
+
+constexpr int kVerticalTaskbarWidth = 48;
+
+WINUSERAPI UINT WINAPI GetDpiForWindow(HWND hwnd);
+
+typedef enum MONITOR_DPI_TYPE {
+    MDT_EFFECTIVE_DPI = 0,
+    MDT_ANGULAR_DPI = 1,
+    MDT_RAW_DPI = 2,
+    MDT_DEFAULT = MDT_EFFECTIVE_DPI
+} MONITOR_DPI_TYPE;
+
+STDAPI GetDpiForMonitor(HMONITOR monitor,
+                        MONITOR_DPI_TYPE dpiType,
+                        UINT* dpiX,
+                        UINT* dpiY);
+
+using SHAppBarMessage_t = decltype(&SHAppBarMessage);
+SHAppBarMessage_t SHAppBarMessage_Original;
 
 const wchar_t* EdgeName(UINT edge) {
     switch (edge) {
@@ -82,7 +103,9 @@ bool GetNativeTaskbarEdge(UINT* edge) {
         .cbSize = sizeof(APPBARDATA),
     };
 
-    if (!SHAppBarMessage(ABM_GETTASKBARPOS, &appBarData)) {
+    auto appBarMessage =
+        SHAppBarMessage_Original ? SHAppBarMessage_Original : SHAppBarMessage;
+    if (!appBarMessage(ABM_GETTASKBARPOS, &appBarData)) {
         Wh_Log(L"SHAppBarMessage(ABM_GETTASKBARPOS) failed");
         return false;
     }
@@ -125,6 +148,59 @@ bool IsCurrentProcessTaskbarWindow(HWND window) {
            _wcsicmp(className, L"Shell_SecondaryTrayWnd") == 0;
 }
 
+using TrayUI_GetMinSize_t = void(WINAPI*)(void* pThis,
+                                          HMONITOR monitor,
+                                          SIZE* size);
+TrayUI_GetMinSize_t TrayUI_GetMinSize_Original;
+
+void WINAPI TrayUI_GetMinSize_Hook(void* pThis,
+                                   HMONITOR monitor,
+                                   SIZE* size) {
+    TrayUI_GetMinSize_Original(pThis, monitor, size);
+
+    if (g_unloading || !IsNativeVerticalTaskbar()) {
+        return;
+    }
+
+    UINT dpiX = 96;
+    UINT dpiY = 96;
+    if (FAILED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY))) {
+        dpiX = 96;
+    }
+
+    LONG originalWidth = size->cx;
+    size->cx = MulDiv(kVerticalTaskbarWidth, dpiX, 96);
+
+    if (!g_loggedWidthOverride.exchange(true)) {
+        Wh_Log(L"Setting compact outer width: %dpx->%dpx", originalWidth,
+               size->cx);
+    }
+}
+
+bool HookTaskbarDllSymbols() {
+    HMODULE module =
+        LoadLibraryEx(L"taskbar.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!module) {
+        Wh_Log(L"Failed to load taskbar.dll");
+        return false;
+    }
+
+    WindhawkUtils::SYMBOL_HOOK hooks[] = {
+        {
+            {LR"(public: virtual void __cdecl TrayUI::GetMinSize(struct HMONITOR__ *,struct tagSIZE *))"},
+            &TrayUI_GetMinSize_Original,
+            TrayUI_GetMinSize_Hook,
+        },
+    };
+
+    if (!WindhawkUtils::HookSymbols(module, hooks, ARRAYSIZE(hooks))) {
+        Wh_Log(L"Failed to hook TrayUI::GetMinSize");
+        return false;
+    }
+
+    return true;
+}
+
 FrameworkElement FindChildByName(FrameworkElement element, PCWSTR name) {
     int childCount = Media::VisualTreeHelper::GetChildrenCount(element);
     for (int i = 0; i < childCount; i++) {
@@ -157,10 +233,36 @@ FrameworkElement FindDescendantByName(FrameworkElement element, PCWSTR name) {
     return nullptr;
 }
 
+void ApplyCompactRepeaterState(FrameworkElement child) {
+    FrameworkElement current = child;
+    for (int i = 0; i < 6 && current; i++) {
+        current = Media::VisualTreeHelper::GetParent(current)
+                      .try_as<FrameworkElement>();
+        if (!current || current.Name() != L"TaskbarFrameRepeater") {
+            continue;
+        }
+
+        if (g_unloading) {
+            current.ClearValue(FrameworkElement::WidthProperty());
+            current.ClearValue(FrameworkElement::MinWidthProperty());
+            current.ClearValue(FrameworkElement::MaxWidthProperty());
+            current.ClearValue(FrameworkElement::HorizontalAlignmentProperty());
+        } else {
+            current.MinWidth(0);
+            current.MaxWidth(48);
+            current.Width(48);
+            current.HorizontalAlignment(HorizontalAlignment::Left);
+        }
+        return;
+    }
+}
+
 void ApplyCompactLabelState(FrameworkElement taskListButton) {
     if (!IsNativeVerticalTaskbar()) {
         return;
     }
+
+    ApplyCompactRepeaterState(taskListButton);
 
     auto iconPanel = FindChildByName(taskListButton, L"IconPanel");
     auto iconPanelGrid = iconPanel.try_as<Controls::Grid>();
@@ -207,6 +309,32 @@ void ApplyCompactLabelState(FrameworkElement taskListButton) {
     }
 }
 
+bool IsTaskbarFrameSize(int taskbarSize) {
+    return taskbarSize == 1 || taskbarSize == 2;
+}
+
+using TaskbarConfiguration_GetFrameSize_t = double(WINAPI*)(int taskbarSize);
+TaskbarConfiguration_GetFrameSize_t TaskbarConfiguration_GetFrameSize_Original;
+
+double WINAPI TaskbarConfiguration_GetFrameSize_Hook(int taskbarSize) {
+    double original = TaskbarConfiguration_GetFrameSize_Original(taskbarSize);
+
+    // Only clamp the expanded labeled frame back to the compact native size.
+    // The native compact value passes through untouched, so this never
+    // undersizes a frame the way forcing a fixed value did in v0.3.
+    if (g_unloading || !IsTaskbarFrameSize(taskbarSize) ||
+        original <= kVerticalTaskbarWidth || !IsNativeVerticalTaskbar()) {
+        return original;
+    }
+
+    if (!g_loggedFrameClamp.exchange(true)) {
+        Wh_Log(L"Clamping labeled frame size: %.1fDIP->%dDIP", original,
+               kVerticalTaskbarWidth);
+    }
+
+    return kVerticalTaskbarWidth;
+}
+
 using TaskListButton_UpdateVisualStates_t = void(WINAPI*)(void* pThis);
 TaskListButton_UpdateVisualStates_t TaskListButton_UpdateVisualStates_Original;
 
@@ -228,6 +356,8 @@ void ApplyCompactStartButtonState(FrameworkElement toggleButton) {
             L"StartButton") {
         return;
     }
+
+    ApplyCompactRepeaterState(toggleButton);
 
     auto rootPanel =
         FindChildByName(toggleButton, L"ExperienceToggleButtonRootPanel")
@@ -290,6 +420,11 @@ bool HookTaskbarViewSymbols(HMODULE module) {
             {LR"(protected: virtual void __cdecl winrt::Taskbar::implementation::ExperienceToggleButton::UpdateVisualStates(void))"},
             &ExperienceToggleButton_UpdateVisualStates_Original,
             ExperienceToggleButton_UpdateVisualStates_Hook,
+        },
+        {
+            {LR"(public: static double __cdecl winrt::Taskbar::implementation::TaskbarConfiguration::GetFrameSize(enum winrt::WindowsUdk::UI::Shell::TaskbarSize))"},
+            &TaskbarConfiguration_GetFrameSize_Original,
+            TaskbarConfiguration_GetFrameSize_Hook,
         },
     };
 
@@ -363,6 +498,30 @@ LONG WINAPI RegGetValueW_Hook(HKEY key,
     return ERROR_SUCCESS;
 }
 
+auto WINAPI SHAppBarMessage_Hook(DWORD message, PAPPBARDATA data) {
+    auto result = SHAppBarMessage_Original(message, data);
+
+    if (g_unloading || message != ABM_QUERYPOS || !result || !data ||
+        !IsCurrentProcessTaskbarWindow(data->hWnd) ||
+        (data->uEdge != ABE_LEFT && data->uEdge != ABE_RIGHT)) {
+        return result;
+    }
+
+    UINT dpi = GetDpiForWindow(data->hWnd);
+    if (!dpi) {
+        dpi = 96;
+    }
+
+    int width = MulDiv(kVerticalTaskbarWidth, dpi, 96);
+    if (data->uEdge == ABE_LEFT) {
+        data->rc.right = data->rc.left + width;
+    } else {
+        data->rc.left = data->rc.right - width;
+    }
+
+    return result;
+}
+
 void RequestTaskbarBehaviorRefresh() {
     HWND taskbarWindow = FindWindow(L"Shell_TrayWnd", nullptr);
     if (!IsCurrentProcessTaskbarWindow(taskbarWindow)) {
@@ -375,6 +534,10 @@ void RequestTaskbarBehaviorRefresh() {
 
 BOOL Wh_ModInit() {
     Wh_Log(L"Initializing compact native vertical taskbar behavior");
+
+    if (!HookTaskbarDllSymbols()) {
+        return FALSE;
+    }
 
     bool delayedTaskbarViewHookNeeded = false;
     if (HMODULE taskbarView = GetTaskbarViewModule()) {
@@ -394,6 +557,13 @@ BOOL Wh_ModInit() {
         !WindhawkUtils::SetFunctionHook(regGetValueW, RegGetValueW_Hook,
                                         &RegGetValueW_Original)) {
         Wh_Log(L"Failed to hook native taskbar grouping settings");
+        return FALSE;
+    }
+
+    if (!WindhawkUtils::SetFunctionHook(SHAppBarMessage,
+                                        SHAppBarMessage_Hook,
+                                        &SHAppBarMessage_Original)) {
+        Wh_Log(L"Failed to hook SHAppBarMessage");
         return FALSE;
     }
 
