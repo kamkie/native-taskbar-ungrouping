@@ -1,7 +1,7 @@
 // ==WindhawkMod==
-// @id              native-vertical-taskbar-width
-// @name            Native Compact Vertical Taskbar
-// @description     Keep the native Windows 11 vertical taskbar compact while creating a separate native button for each window.
+// @id              native-taskbar-ungrouping
+// @name            Native Taskbar Ungrouping
+// @description     Give every window its own native Windows 11 taskbar button without changing the taskbar's native look.
 // @version         2.0
 // @author          kamkie
 // @github          https://github.com/kamkie
@@ -16,11 +16,12 @@
 
 // ==WindhawkModReadme==
 /*
-# Native Compact Vertical Taskbar
+# Native Taskbar Ungrouping
 
-Keeps Windows in its native **combine** presentation mode, which preserves the
-native 48-DIP icon-only vertical taskbar, while splitting the underlying task
-model so each newly opened window receives a separate native button.
+Keeps Windows in its native **combine** presentation mode — preserving the
+native icon-only taskbar layout, including the compact 48-DIP vertical
+taskbar — while splitting the underlying task model so each newly opened
+window receives a separate native button.
 
 The mod doesn't modify taskbar XAML, labels, frame dimensions, indicators,
 progress, badges, padding, Start, tray, or appbar geometry. Windows continues

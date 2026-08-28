@@ -1,6 +1,8 @@
-# Native Compact Vertical Taskbar
+# Native Taskbar Ungrouping
 
-A private Windhawk mod for Microsoft's native Windows 11 left/right taskbar.
+A Windhawk mod that gives every window its own native Windows 11 taskbar
+button without changing the taskbar's native look — including the compact
+48-DIP icon-only layout of the native left/right taskbar.
 
 ## Behavior
 
@@ -37,7 +39,7 @@ measurements, HWND size, or appbar reservation.
 
 ## Installation
 
-Compile and install `native-vertical-taskbar-width.wh.cpp` as a local Windhawk
+Compile and install `native-taskbar-ungrouping.wh.cpp` as a local Windhawk
 mod. Disable **Taskbar Labels for Windows 11**, **Vertical Taskbar for Windows
 11**, and the upstream **Disable grouping on the taskbar** mod to avoid duplicate
 hooks.
