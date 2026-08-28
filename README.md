@@ -27,24 +27,22 @@ The source of the mod is
 
 ## Design
 
-Three matching frame-size layers are adjusted only for `ABE_LEFT` and
-`ABE_RIGHT`:
+Two outer-frame sizing paths are adjusted only for `ABE_LEFT` and `ABE_RIGHT`:
 
-1. `TaskbarConfiguration::GetFrameSize` supplies the native taskbar XAML frame
-   thickness.
-2. `SystemTrayController::GetFrameSize` and its secondary-monitor counterpart
-   supply the native tray frame thickness.
-3. `TrayUI::GetMinSize`, plus Explorer's `ABM_QUERYPOS` appbar negotiation,
+1. `TrayUI::GetMinSize` supplies the DPI-scaled outer taskbar window width.
+2. Explorer's `ABM_QUERYPOS` appbar negotiation
    supplies the DPI-scaled outer taskbar window and reserved work-area width.
+
+The native `TaskbarConfiguration::GetFrameSize` and
+`SystemTrayController::GetFrameSize` functions are deliberately untouched. On
+this native vertical build they still represent the taskbar's long frame
+dimension; overriding them with the desired width collapses the taskbar and
+makes it non-interactive.
 
 For the two fixed behavioral changes, the mod makes Explorer read `Never`
 combine and returns `HasLabel=false` from the native taskbar view model. No
 taskbar-button or indicator visual state is hooked.
 
-`SystemTray.dll` frame symbols are optional because these functions can be
-inlined and Microsoft's PDB isn't available for every serviced build. Failure
-to retrieve that PDB doesn't disable the Taskbar.View, TrayUI, label, or
-grouping behavior.
 
 ## Install as a local mod
 

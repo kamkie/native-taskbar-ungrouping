@@ -2,7 +2,7 @@
 // @id              native-vertical-taskbar-width
 // @name            Native Compact Vertical Taskbar
 // @description     Narrow the native Windows 11 vertical taskbar, hide labels, and keep buttons separate.
-// @version         0.3
+// @version         0.4
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @include         explorer.exe
@@ -66,7 +66,6 @@ struct {
 
 std::atomic<bool> g_unloading;
 std::atomic<bool> g_taskbarViewHooked;
-std::atomic<bool> g_systemTrayHooked;
 std::atomic<bool> g_groupingRefreshToggle;
 std::atomic<unsigned> g_logEpoch{1};
 std::atomic<int> g_lastLoggedEdge{-1};
@@ -77,9 +76,6 @@ struct LogGate {
 };
 
 LogGate g_trayMinSizeLogGate;
-LogGate g_taskbarFrameLogGate;
-LogGate g_systemTrayFrameLogGate;
-LogGate g_secondaryTrayFrameLogGate;
 LogGate g_appBarLogGate;
 LogGate g_hideLabelsLogGate;
 LogGate g_groupingLogGate;
@@ -225,83 +221,6 @@ void WINAPI TrayUI_GetMinSize_Hook(void* pThis,
     }
 }
 
-bool IsTaskbarFrameSize(int taskbarSize) {
-    return taskbarSize == 1 || taskbarSize == 2;
-}
-
-using TaskbarConfiguration_GetFrameSize_t =
-    double(WINAPI*)(int taskbarSize);
-TaskbarConfiguration_GetFrameSize_t
-    TaskbarConfiguration_GetFrameSize_Original;
-
-double WINAPI TaskbarConfiguration_GetFrameSize_Hook(int taskbarSize) {
-    double original =
-        TaskbarConfiguration_GetFrameSize_Original(taskbarSize);
-
-    if (g_unloading || !IsTaskbarFrameSize(taskbarSize) ||
-        !IsNativeVerticalTaskbar()) {
-        return original;
-    }
-
-    if (ShouldLog(g_taskbarFrameLogGate)) {
-        Wh_Log(L"TaskbarConfiguration::GetFrameSize size=%d "
-               L"original=%.1fDIP final=%dDIP",
-               taskbarSize, original, RequestedWidth());
-    }
-
-    return RequestedWidth();
-}
-
-using SystemTrayController_GetFrameSize_t =
-    double(WINAPI*)(void* pThis, int taskbarSize);
-SystemTrayController_GetFrameSize_t
-    SystemTrayController_GetFrameSize_Original;
-
-double WINAPI SystemTrayController_GetFrameSize_Hook(void* pThis,
-                                                     int taskbarSize) {
-    double original =
-        SystemTrayController_GetFrameSize_Original(pThis, taskbarSize);
-
-    if (g_unloading || !IsTaskbarFrameSize(taskbarSize) ||
-        !IsNativeVerticalTaskbar()) {
-        return original;
-    }
-
-    if (ShouldLog(g_systemTrayFrameLogGate)) {
-        Wh_Log(L"SystemTrayController::GetFrameSize size=%d "
-               L"original=%.1fDIP final=%dDIP",
-               taskbarSize, original, RequestedWidth());
-    }
-
-    return RequestedWidth();
-}
-
-using SystemTraySecondaryController_GetFrameSize_t =
-    double(WINAPI*)(void* pThis, int taskbarSize);
-SystemTraySecondaryController_GetFrameSize_t
-    SystemTraySecondaryController_GetFrameSize_Original;
-
-double WINAPI SystemTraySecondaryController_GetFrameSize_Hook(
-    void* pThis,
-    int taskbarSize) {
-    double original =
-        SystemTraySecondaryController_GetFrameSize_Original(pThis,
-                                                            taskbarSize);
-
-    if (g_unloading || !IsTaskbarFrameSize(taskbarSize) ||
-        !IsNativeVerticalTaskbar()) {
-        return original;
-    }
-
-    if (ShouldLog(g_secondaryTrayFrameLogGate)) {
-        Wh_Log(L"SystemTraySecondaryController::GetFrameSize size=%d "
-               L"original=%.1fDIP final=%dDIP",
-               taskbarSize, original, RequestedWidth());
-    }
-
-    return RequestedWidth();
-}
-
 using ITaskbarAppItemViewModel_HasLabels_t = bool(WINAPI*)(void* pThis);
 ITaskbarAppItemViewModel_HasLabels_t
     ITaskbarAppItemViewModel_HasLabels_Original;
@@ -441,10 +360,6 @@ HMODULE GetTaskbarViewModule() {
     return module;
 }
 
-HMODULE GetSystemTrayModule() {
-    return GetModuleHandle(L"SystemTray.dll");
-}
-
 bool HookTaskbarDllSymbols() {
     HMODULE module =
         LoadLibraryEx(L"taskbar.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -472,11 +387,6 @@ bool HookTaskbarDllSymbols() {
 
 bool HookTaskbarViewSymbols(HMODULE module) {
     WindhawkUtils::SYMBOL_HOOK hooks[] = {
-        {
-            {LR"(public: static double __cdecl winrt::Taskbar::implementation::TaskbarConfiguration::GetFrameSize(enum winrt::WindowsUdk::UI::Shell::TaskbarSize))"},
-            &TaskbarConfiguration_GetFrameSize_Original,
-            TaskbarConfiguration_GetFrameSize_Hook,
-        },
         {
             {LR"(public: __cdecl winrt::impl::consume_Taskbar_ITaskbarAppItemViewModel<struct winrt::Taskbar::ITaskbarAppItemViewModel>::HasLabel(void)const )"},
             &ITaskbarAppItemViewModel_HasLabels_Original,
@@ -507,38 +417,7 @@ bool HookTaskbarViewSymbols(HMODULE module) {
         return false;
     }
 
-    Wh_Log(L"Hooked Taskbar.View.dll frame sizing and native label state");
-    return true;
-}
-
-bool HookSystemTraySymbols(HMODULE module) {
-    WindhawkUtils::SYMBOL_HOOK hooks[] = {
-        {
-            {LR"(private: double __cdecl winrt::SystemTray::implementation::SystemTrayController::GetFrameSize(enum winrt::WindowsUdk::UI::Shell::TaskbarSize))"},
-            &SystemTrayController_GetFrameSize_Original,
-            SystemTrayController_GetFrameSize_Hook,
-            true,
-        },
-        {
-            {LR"(private: double __cdecl winrt::SystemTray::implementation::SystemTraySecondaryController::GetFrameSize(enum winrt::WindowsUdk::UI::Shell::TaskbarSize))"},
-            &SystemTraySecondaryController_GetFrameSize_Original,
-            SystemTraySecondaryController_GetFrameSize_Hook,
-            true,
-        },
-    };
-
-    if (!WindhawkUtils::HookSymbols(module, hooks, ARRAYSIZE(hooks))) {
-        // These functions are inlined on some builds, and Microsoft's symbols
-        // for SystemTray.dll aren't always available. TaskbarConfiguration and
-        // TrayUI still provide the native frame and appbar sizing paths, so a
-        // symbol-server failure here must not prevent the rest of the mod from
-        // loading.
-        Wh_Log(L"SystemTray.dll frame symbols unavailable; continuing with "
-               L"TaskbarConfiguration and TrayUI sizing");
-        return true;
-    }
-
-    Wh_Log(L"Hooked SystemTray.dll frame sizing");
+    Wh_Log(L"Hooked Taskbar.View.dll native label state");
     return true;
 }
 
@@ -557,14 +436,6 @@ HMODULE WINAPI LoadLibraryExW_Hook(LPCWSTR fileName,
         !g_taskbarViewHooked.exchange(true)) {
         Wh_Log(L"Taskbar view module loaded: %s", fileName);
         if (HookTaskbarViewSymbols(module)) {
-            Wh_ApplyHookOperations();
-        }
-    }
-
-    if (!g_systemTrayHooked && GetSystemTrayModule() == module &&
-        !g_systemTrayHooked.exchange(true)) {
-        Wh_Log(L"System tray module loaded: %s", fileName);
-        if (HookSystemTraySymbols(module)) {
             Wh_ApplyHookOperations();
         }
     }
@@ -624,16 +495,6 @@ BOOL Wh_ModInit() {
         }
     } else {
         Wh_Log(L"Taskbar.View.dll isn't loaded yet");
-        delayedModuleHookNeeded = true;
-    }
-
-    if (HMODULE module = GetSystemTrayModule()) {
-        g_systemTrayHooked = true;
-        if (!HookSystemTraySymbols(module)) {
-            return FALSE;
-        }
-    } else {
-        Wh_Log(L"SystemTray.dll isn't loaded yet");
         delayedModuleHookNeeded = true;
     }
 
