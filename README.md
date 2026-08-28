@@ -1,67 +1,47 @@
 # Native Compact Vertical Taskbar
 
-A private/personal Windhawk mod that makes Microsoft's native Windows 11
-left/right taskbar compact:
+A private Windhawk mod for the native Windows 11 left/right taskbar.
 
-- 48-DIP taskbar width by default.
-- Labels always hidden.
-- Running windows always kept as separate buttons.
+## Behavior
 
-The mod leaves Windows in charge of orientation, taskbar buttons,
-running/open-window indicators, progress, badges, overlays, hover and pressed
-states, tray, clock, flyouts, and hit testing. It doesn't emulate a vertical
-taskbar and doesn't depend on the older Windhawk vertical-taskbar mod or the
-broad **Taskbar Labels for Windows 11** mod.
+- Keeps running windows as separate native taskbar buttons.
+- Relies on Windows' native vertical icon-only layout, so labels remain hidden.
+- Preserves native indicators, progress, badges, overlays, highlights,
+  animations, tray, clock, flyouts, and hit testing.
+- Does nothing when the taskbar is horizontal.
+- Restores the Windows grouping preference when disabled.
+
+## Why there is no width or label hook
+
+On the target machine, Windows already supplies the requested native 48-DIP
+vertical width and hides labels. Runtime measurement confirms a 48-logical-pixel
+taskbar window and a matching 72-physical-pixel appbar reservation at 150% DPI.
+
+Earlier versions attempted to override internal frame and `HasLabel` paths.
+Those values have different semantics in Microsoft's new native vertical
+implementation and caused the taskbar XAML content to collapse. Version 0.5
+removes all frame, XAML, label, button, and symbol hooks. The only modification
+is the native grouping preference observed by Explorer.
 
 ## Current target
 
 - Windows 11 Pro 25H2, build 26200.9278, x64
-- `explorer.exe` 10.0.26100.8875
-- `Taskbar.View.dll` 2607.28001.200.0
-- `SystemTray.dll` 2607.28000.0.0
 - Windhawk 1.7.3
-- Primary monitor at 150% effective DPI
+- Native taskbar position: Left or Right
 
-The source of the mod is
-[`native-vertical-taskbar-width.wh.cpp`](native-vertical-taskbar-width.wh.cpp).
+## Installation
 
-## Design
-
-Two outer-frame sizing paths are adjusted only for `ABE_LEFT` and `ABE_RIGHT`:
-
-1. `TrayUI::GetMinSize` supplies the DPI-scaled outer taskbar window width.
-2. Explorer's `ABM_QUERYPOS` appbar negotiation
-   supplies the DPI-scaled outer taskbar window and reserved work-area width.
-
-The native `TaskbarConfiguration::GetFrameSize` and
-`SystemTrayController::GetFrameSize` functions are deliberately untouched. On
-this native vertical build they still represent the taskbar's long frame
-dimension; overriding them with the desired width collapses the taskbar and
-makes it non-interactive.
-
-For the two fixed behavioral changes, the mod makes Explorer read `Never`
-combine and returns `HasLabel=false` from the native taskbar view model. No
-taskbar-button or indicator visual state is hooked.
-
-
-## Install as a local mod
-
-1. Open Windhawk and enable **Developer mode** in Windhawk Settings if needed.
-2. Choose **Create a new mod**.
+1. Disable **Taskbar Labels for Windows 11**.
+2. In Windhawk, create a local mod or edit the existing local mod.
 3. Replace the editor contents with
-   `native-vertical-taskbar-width.wh.cpp`.
-4. Choose **Compile Mod**, exit editing mode, and enable the mod.
-5. Open the mod's settings to change **Vertical taskbar width**.
+   [`native-vertical-taskbar-width.wh.cpp`](native-vertical-taskbar-width.wh.cpp).
+4. Compile the mod, exit editing mode, and enable it.
+5. Restart Explorer once if existing buttons don't rebuild immediately.
 
-Disable **Taskbar Labels for Windows 11** while this mod is enabled; the compact
-mod replaces the only two behaviors needed from it without its cosmetic
-settings and visual modifications.
-
-Disable or remove the mod in Windhawk to restore Microsoft's native dimensions,
-labels, and grouping behavior.
+Disable or remove the mod to restore the grouping preference stored in Windows.
 
 ## Origin and license
 
-The frame-sizing approach is adapted from m417z's
-[`taskbar-icon-size`](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-icon-size.wh.cpp)
+The grouping-settings hook is adapted from m417z's
+[`taskbar-labels`](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-labels.wh.cpp)
 mod. This derivative is licensed under GPL-3.0.
