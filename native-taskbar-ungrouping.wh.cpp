@@ -2,9 +2,10 @@
 // @id              native-taskbar-ungrouping
 // @name            Native Taskbar Ungrouping
 // @description     Give every window its own native Windows 11 taskbar button without changing the taskbar's native look.
-// @version         2.0
+// @version         2.0.0
 // @author          kamkie
 // @github          https://github.com/kamkie
+// @homepage        https://github.com/kamkie/native-taskbar-ungrouping
 // @include         explorer.exe
 // @architecture    x86-64
 // @compilerOptions -lcomctl32 -lole32 -loleaut32 -lshlwapi -lversion
@@ -13,6 +14,7 @@
 
 // Group-splitting engine adapted from m417z's taskbar-grouping mod:
 // https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-grouping.wh.cpp
+// Modified by kamkie on 2026-08-28; see NOTICE.md in the project repository.
 
 // ==WindhawkModReadme==
 /*

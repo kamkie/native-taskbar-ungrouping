@@ -46,4 +46,5 @@ hooks.
 
 ## License
 
-GPL-3.0, matching the upstream derivative.
+Licensed under [GPL-3.0](LICENSE), matching the upstream derivative. See
+[NOTICE.md](NOTICE.md) for attribution and a summary of modifications.
