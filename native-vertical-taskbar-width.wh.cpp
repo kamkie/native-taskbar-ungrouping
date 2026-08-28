@@ -2,7 +2,7 @@
 // @id              native-vertical-taskbar-width
 // @name            Native Compact Vertical Taskbar
 // @description     Narrow the native Windows 11 vertical taskbar, hide labels, and keep buttons separate.
-// @version         0.2
+// @version         0.3
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @include         explorer.exe
@@ -517,6 +517,7 @@ bool HookSystemTraySymbols(HMODULE module) {
             {LR"(private: double __cdecl winrt::SystemTray::implementation::SystemTrayController::GetFrameSize(enum winrt::WindowsUdk::UI::Shell::TaskbarSize))"},
             &SystemTrayController_GetFrameSize_Original,
             SystemTrayController_GetFrameSize_Hook,
+            true,
         },
         {
             {LR"(private: double __cdecl winrt::SystemTray::implementation::SystemTraySecondaryController::GetFrameSize(enum winrt::WindowsUdk::UI::Shell::TaskbarSize))"},
@@ -527,8 +528,14 @@ bool HookSystemTraySymbols(HMODULE module) {
     };
 
     if (!WindhawkUtils::HookSymbols(module, hooks, ARRAYSIZE(hooks))) {
-        Wh_Log(L"Failed to hook SystemTray.dll frame sizing symbols");
-        return false;
+        // These functions are inlined on some builds, and Microsoft's symbols
+        // for SystemTray.dll aren't always available. TaskbarConfiguration and
+        // TrayUI still provide the native frame and appbar sizing paths, so a
+        // symbol-server failure here must not prevent the rest of the mod from
+        // loading.
+        Wh_Log(L"SystemTray.dll frame symbols unavailable; continuing with "
+               L"TaskbarConfiguration and TrayUI sizing");
+        return true;
     }
 
     Wh_Log(L"Hooked SystemTray.dll frame sizing");

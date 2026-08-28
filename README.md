@@ -41,6 +41,11 @@ For the two fixed behavioral changes, the mod makes Explorer read `Never`
 combine and returns `HasLabel=false` from the native taskbar view model. No
 taskbar-button or indicator visual state is hooked.
 
+`SystemTray.dll` frame symbols are optional because these functions can be
+inlined and Microsoft's PDB isn't available for every serviced build. Failure
+to retrieve that PDB doesn't disable the Taskbar.View, TrayUI, label, or
+grouping behavior.
+
 ## Install as a local mod
 
 1. Open Windhawk and enable **Developer mode** in Windhawk Settings if needed.
