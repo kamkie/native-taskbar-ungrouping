@@ -1,38 +1,33 @@
 # Native Compact Vertical Taskbar
 
-A private Windhawk mod for the native Windows 11 left/right taskbar.
+A private Windhawk mod for Microsoft's native Windows 11 left/right taskbar.
 
 ## Behavior
 
-- Keeps running windows as separate native taskbar buttons.
-- Collapses only the native label column so buttons remain icon-only and compact.
-- Collapses the Start button's native label and labeled width.
-- Preserves native indicators, progress, badges, overlays, highlights,
-  animations, tray, clock, flyouts, and hit testing.
-- Does nothing when the taskbar is horizontal.
-- Restores the Windows grouping preference when disabled.
+- Leaves Windows in native **combine** presentation mode, preserving the
+  48-DIP icon-only vertical layout.
+- Creates a separate native task group and button for each newly opened window,
+  adjacent to windows from the same application.
+- Preserves native running indicators, progress, badges, overlays, highlights,
+  animations, Start, tray, clock, flyouts, appbar geometry, and hit testing.
+- Preserves application identity for pinned items, icons, launching, and jump
+  lists.
+- Has no user settings or cosmetic options.
 
-## Design
+Existing windows must be closed and reopened after enabling the mod so Explorer
+resolves them into separate task groups.
 
-On the target machine, Windows already supplies the requested native 48-DIP
-vertical width. Runtime measurement confirms a 48-logical-pixel taskbar window
-and a matching 72-physical-pixel appbar reservation at 150% DPI.
+## Architecture
 
-Earlier versions attempted to override internal frame and `HasLabel` paths.
-Those values have different semantics in Microsoft's new native vertical
-implementation and caused the taskbar XAML content to collapse. The current
-version never changes frame sizes or `HasLabel`. It forces native `Never
-combine`, then hooks `TaskListButton::UpdateVisualStates` only to collapse the
-existing `LabelControl` and its grid column after Windows finishes updating the
-button and constrain that button root to 48 DIPs. Running/progress indicators
-and every other visual-state child are untouched.
-`ExperienceToggleButton::UpdateVisualStates` performs the equivalent label-only
-change for the Start button. The shared `TaskbarFrameRepeater` is constrained
-and left-aligned to the same 48-DIP width so compact buttons aren't centered in
-the old labeled extent. Explorer remains solely responsible for all other
-internal frame dimensions. Once all labeled child widths are compact,
-`TrayUI::GetMinSize::cx` and appbar negotiation keep the outer HWND and reserved
-work area at 48 DIPs.
+The mod adapts the proven task-model implementation from m417z's
+[`taskbar-grouping`](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-grouping.wh.cpp)
+mod. Each resolved window receives a temporary unique AppID suffix. Supporting
+hooks strip or translate the suffix where Explorer needs the application's real
+identity, including pins, icons, launches, and jump lists.
+
+Unlike earlier experiments, this version never changes `TaskbarGlomLevel`,
+taskbar XAML, labels, button dimensions, frame measurements, system-tray
+measurements, HWND size, or appbar reservation.
 
 ## Current target
 
@@ -42,17 +37,11 @@ work area at 48 DIPs.
 
 ## Installation
 
-1. Disable **Taskbar Labels for Windows 11**.
-2. In Windhawk, create a local mod or edit the existing local mod.
-3. Replace the editor contents with
-   [`native-vertical-taskbar-width.wh.cpp`](native-vertical-taskbar-width.wh.cpp).
-4. Compile the mod, exit editing mode, and enable it.
-5. Restart Explorer once if existing buttons don't rebuild immediately.
+Compile and install `native-vertical-taskbar-width.wh.cpp` as a local Windhawk
+mod. Disable **Taskbar Labels for Windows 11**, **Vertical Taskbar for Windows
+11**, and the upstream **Disable grouping on the taskbar** mod to avoid duplicate
+hooks.
 
-Disable or remove the mod to restore the grouping preference stored in Windows.
+## License
 
-## Origin and license
-
-The grouping-settings hook is adapted from m417z's
-[`taskbar-labels`](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-labels.wh.cpp)
-mod. This derivative is licensed under GPL-3.0.
+GPL-3.0, matching the upstream derivative.
