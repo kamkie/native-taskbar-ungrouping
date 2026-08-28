@@ -6,7 +6,7 @@ A private Windhawk mod for the native Windows 11 left/right taskbar.
 
 - Keeps running windows as separate native taskbar buttons.
 - Collapses only the native label column so buttons remain icon-only and compact.
-- Keeps the outer taskbar window and appbar reservation at 48 DIPs.
+- Collapses the Start button's native label and labeled width.
 - Preserves native indicators, progress, badges, overlays, highlights,
   animations, tray, clock, flyouts, and hit testing.
 - Does nothing when the taskbar is horizontal.
@@ -25,9 +25,9 @@ version never changes frame sizes or `HasLabel`. It forces native `Never
 combine`, then hooks `TaskListButton::UpdateVisualStates` only to collapse the
 existing `LabelControl` and its grid column after Windows finishes updating the
 button. Running/progress indicators and every other visual-state child are
-untouched. Finally, `TrayUI::GetMinSize::cx` and appbar negotiation are set to
-48 DIPs; the internal TaskbarConfiguration and SystemTray frame dimensions are
-never changed.
+untouched. `ExperienceToggleButton::UpdateVisualStates` performs the equivalent
+label-only change for the Start button. Explorer remains solely responsible for
+the outer HWND, appbar reservation, and all internal frame dimensions.
 
 ## Current target
 
