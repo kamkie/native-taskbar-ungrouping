@@ -1,12 +1,13 @@
 // ==WindhawkMod==
 // @id              native-vertical-taskbar-width
 // @name            Native Compact Vertical Taskbar
-// @description     Keep native Windows 11 vertical taskbar buttons separate without replacing or restyling the taskbar.
-// @version         0.5
+// @description     Keep native Windows 11 vertical taskbar buttons compact and separate without restyling native indicators.
+// @version         0.6
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @include         explorer.exe
 // @architecture    x86-64
+// @compilerOptions -lole32 -loleaut32 -lruntimeobject
 // @license         GPL-3.0
 // ==/WindhawkMod==
 
@@ -17,33 +18,46 @@
 /*
 # Native Compact Vertical Taskbar
 
-Keeps running windows as separate buttons on Microsoft's native Windows 11
-left/right taskbar.
+Keeps running windows as compact, separate buttons on Microsoft's native
+Windows 11 left/right taskbar.
 
 On the target machine, Windows already supplies the desired native 48-DIP
-vertical width and hides labels in the vertical layout. This mod deliberately
-does not override frame dimensions or label/XAML state. It only makes Explorer
-use its native **Never combine** mode while the taskbar is vertical.
+vertical width. Enabling native **Never combine** exposes labels and expands the
+taskbar, so this mod collapses only the native `LabelControl` column after
+Windows updates a button's visual state.
 
 This preserves Microsoft's native taskbar frame, icons, running indicators,
 progress, badges, highlights, animations, tray, clock, flyouts, and hit
-testing. It does nothing while the taskbar is at the top or bottom.
+testing. It never changes `HasLabel`, indicator elements, frame sizes, padding,
+badges, or button backgrounds. It does nothing while the taskbar is at the top
+or bottom.
 
 Disable the broader **Taskbar Labels for Windows 11** mod while using this one.
 Disabling or removing this mod restores the grouping preference stored in
 Windows settings.
 
-Target: Windows 11 25H2 build 26200.9278 (x64), Windhawk 1.7.3.
+Target: Windows 11 25H2 build 26200.9278 (x64), Windhawk 2.0.0-alpha.2.
 */
 // ==/WindhawkModReadme==
 
 #include <windhawk_utils.h>
 
+#undef GetCurrentTime
+
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.UI.Xaml.Controls.h>
+#include <winrt/Windows.UI.Xaml.Media.h>
+
 #include <atomic>
 
+using namespace winrt::Windows::UI::Xaml;
+
 std::atomic<bool> g_unloading;
+std::atomic<bool> g_taskbarViewHooked;
 std::atomic<int> g_lastLoggedEdge{-1};
 std::atomic<bool> g_loggedGroupingOverride;
+std::atomic<bool> g_loggedLabelCollapse;
 
 const wchar_t* EdgeName(UINT edge) {
     switch (edge) {
@@ -104,6 +118,120 @@ bool IsCurrentProcessTaskbarWindow(HWND window) {
            _wcsicmp(className, L"Shell_TrayWnd") == 0;
 }
 
+FrameworkElement FindChildByName(FrameworkElement element, PCWSTR name) {
+    int childCount = Media::VisualTreeHelper::GetChildrenCount(element);
+    for (int i = 0; i < childCount; i++) {
+        auto child = Media::VisualTreeHelper::GetChild(element, i)
+                         .try_as<FrameworkElement>();
+        if (child && child.Name() == name) {
+            return child;
+        }
+    }
+
+    return nullptr;
+}
+
+void ApplyCompactLabelState(FrameworkElement taskListButton) {
+    if (!IsNativeVerticalTaskbar()) {
+        return;
+    }
+
+    auto iconPanel = FindChildByName(taskListButton, L"IconPanel");
+    auto iconPanelGrid = iconPanel.try_as<Controls::Grid>();
+    if (!iconPanelGrid) {
+        return;
+    }
+
+    auto columns = iconPanelGrid.ColumnDefinitions();
+    if (columns.Size() != 2) {
+        return;
+    }
+
+    auto labelControl =
+        FindChildByName(iconPanel, L"LabelControl").try_as<Controls::TextBlock>();
+    if (!labelControl) {
+        return;
+    }
+
+    if (g_unloading) {
+        columns.GetAt(1).Width(GridLength{
+            .Value = 1,
+            .GridUnitType = GridUnitType::Auto,
+        });
+        labelControl.Visibility(Visibility::Visible);
+        return;
+    }
+
+    // Change only the native label column. Running/progress indicators and all
+    // other visual-state children remain owned by Windows.
+    labelControl.Visibility(Visibility::Collapsed);
+    columns.GetAt(1).Width(GridLength{
+        .Value = 0,
+        .GridUnitType = GridUnitType::Pixel,
+    });
+
+    if (!g_loggedLabelCollapse.exchange(true)) {
+        Wh_Log(L"Collapsed the native LabelControl column");
+    }
+}
+
+using TaskListButton_UpdateVisualStates_t = void(WINAPI*)(void* pThis);
+TaskListButton_UpdateVisualStates_t TaskListButton_UpdateVisualStates_Original;
+
+void WINAPI TaskListButton_UpdateVisualStates_Hook(void* pThis) {
+    TaskListButton_UpdateVisualStates_Original(pThis);
+
+    void* taskListButtonIUnknownPtr = static_cast<void**>(pThis) + 3;
+    winrt::Windows::Foundation::IUnknown taskListButtonIUnknown;
+    winrt::copy_from_abi(taskListButtonIUnknown, taskListButtonIUnknownPtr);
+
+    ApplyCompactLabelState(taskListButtonIUnknown.as<FrameworkElement>());
+}
+
+HMODULE GetTaskbarViewModule() {
+    HMODULE module = GetModuleHandle(L"Taskbar.View.dll");
+    if (!module) {
+        module = GetModuleHandle(L"ExplorerExtensions.dll");
+    }
+    return module;
+}
+
+bool HookTaskbarViewSymbols(HMODULE module) {
+    WindhawkUtils::SYMBOL_HOOK hooks[] = {
+        {
+            {LR"(private: void __cdecl winrt::Taskbar::implementation::TaskListButton::UpdateVisualStates(void))"},
+            &TaskListButton_UpdateVisualStates_Original,
+            TaskListButton_UpdateVisualStates_Hook,
+        },
+    };
+
+    if (!WindhawkUtils::HookSymbols(module, hooks, ARRAYSIZE(hooks))) {
+        Wh_Log(L"Failed to hook TaskListButton::UpdateVisualStates");
+        return false;
+    }
+
+    Wh_Log(L"Hooked native TaskListButton label presentation");
+    return true;
+}
+
+using LoadLibraryExW_t = decltype(&LoadLibraryExW);
+LoadLibraryExW_t LoadLibraryExW_Original;
+
+HMODULE WINAPI LoadLibraryExW_Hook(LPCWSTR fileName,
+                                   HANDLE file,
+                                   DWORD flags) {
+    HMODULE module = LoadLibraryExW_Original(fileName, file, flags);
+    if (module && !g_taskbarViewHooked && GetTaskbarViewModule() == module &&
+        !g_taskbarViewHooked.exchange(true)) {
+        Wh_Log(L"Taskbar view module loaded: %s", fileName);
+        if (HookTaskbarViewSymbols(module)) {
+            Wh_ApplyHookOperations();
+        }
+    }
+
+    return module;
+}
+
 using RegGetValueW_t = decltype(&RegGetValueW);
 RegGetValueW_t RegGetValueW_Original;
 
@@ -158,7 +286,18 @@ void RequestTaskbarBehaviorRefresh() {
 }
 
 BOOL Wh_ModInit() {
-    Wh_Log(L"Initializing native vertical Never combine behavior");
+    Wh_Log(L"Initializing compact native vertical taskbar behavior");
+
+    bool delayedTaskbarViewHookNeeded = false;
+    if (HMODULE taskbarView = GetTaskbarViewModule()) {
+        g_taskbarViewHooked = true;
+        if (!HookTaskbarViewSymbols(taskbarView)) {
+            return FALSE;
+        }
+    } else {
+        Wh_Log(L"Taskbar.View.dll isn't loaded yet");
+        delayedTaskbarViewHookNeeded = true;
+    }
 
     HMODULE kernelBase = GetModuleHandle(L"kernelbase.dll");
     auto regGetValueW = reinterpret_cast<RegGetValueW_t>(
@@ -168,6 +307,18 @@ BOOL Wh_ModInit() {
                                         &RegGetValueW_Original)) {
         Wh_Log(L"Failed to hook native taskbar grouping settings");
         return FALSE;
+    }
+
+    if (delayedTaskbarViewHookNeeded) {
+        auto loadLibraryExW = reinterpret_cast<LoadLibraryExW_t>(
+            GetProcAddress(kernelBase, "LoadLibraryExW"));
+        if (!loadLibraryExW ||
+            !WindhawkUtils::SetFunctionHook(loadLibraryExW,
+                                            LoadLibraryExW_Hook,
+                                            &LoadLibraryExW_Original)) {
+            Wh_Log(L"Failed to hook delayed Taskbar.View.dll loading");
+            return FALSE;
+        }
     }
 
     return TRUE;

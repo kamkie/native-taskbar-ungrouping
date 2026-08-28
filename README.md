@@ -5,28 +5,31 @@ A private Windhawk mod for the native Windows 11 left/right taskbar.
 ## Behavior
 
 - Keeps running windows as separate native taskbar buttons.
-- Relies on Windows' native vertical icon-only layout, so labels remain hidden.
+- Collapses only the native label column so buttons remain icon-only and compact.
 - Preserves native indicators, progress, badges, overlays, highlights,
   animations, tray, clock, flyouts, and hit testing.
 - Does nothing when the taskbar is horizontal.
 - Restores the Windows grouping preference when disabled.
 
-## Why there is no width or label hook
+## Design
 
 On the target machine, Windows already supplies the requested native 48-DIP
-vertical width and hides labels. Runtime measurement confirms a 48-logical-pixel
-taskbar window and a matching 72-physical-pixel appbar reservation at 150% DPI.
+vertical width. Runtime measurement confirms a 48-logical-pixel taskbar window
+and a matching 72-physical-pixel appbar reservation at 150% DPI.
 
 Earlier versions attempted to override internal frame and `HasLabel` paths.
 Those values have different semantics in Microsoft's new native vertical
-implementation and caused the taskbar XAML content to collapse. Version 0.5
-removes all frame, XAML, label, button, and symbol hooks. The only modification
-is the native grouping preference observed by Explorer.
+implementation and caused the taskbar XAML content to collapse. The current
+version never changes frame sizes or `HasLabel`. It forces native `Never
+combine`, then hooks `TaskListButton::UpdateVisualStates` only to collapse the
+existing `LabelControl` and its grid column after Windows finishes updating the
+button. Running/progress indicators and every other visual-state child are
+untouched.
 
 ## Current target
 
 - Windows 11 Pro 25H2, build 26200.9278, x64
-- Windhawk 1.7.3
+- Windhawk 2.0.0-alpha.2
 - Native taskbar position: Left or Right
 
 ## Installation
