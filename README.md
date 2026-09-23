@@ -36,9 +36,20 @@ doesn't contain Windows 10 or ExplorerPatcher compatibility paths.
 
 ## Current target
 
-- Windows 11 Pro 25H2, build 26200.9278, x64
-- Windhawk 2.0.0-alpha.2
+- Windows 11 Pro 25H2, build 26200.9550, x64
+- Windhawk 2.0.0-alpha.6
 - Native taskbar position: Left or Right
+
+Version 2.1.1 supports the additional icon-variants argument in
+`CTaskBand::_UpdateItemIcon` introduced in taskbar.dll 10.0.26100.9549.
+It also retains the previous signature used on build 26200.9278. At least
+one supported signature must resolve, so a future incompatible change fails
+initialization instead of silently disabling icon identity handling.
+
+Validated on build 26200.9550: compilation, successful initialization in
+Explorer, assignment of a separate task group to a newly opened Explorer
+window, and execution of the new icon-update hook. The older signature is
+retained but was not retested on an older Windows installation.
 
 ## Installation
 
