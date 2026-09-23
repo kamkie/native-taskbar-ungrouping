@@ -2,7 +2,7 @@
 // @id              native-taskbar-ungrouping
 // @name            Native Taskbar Ungrouping
 // @description     Give every window its own native Windows 11 taskbar button without changing the taskbar's native look.
-// @version         2.1.0
+// @version         2.1.1
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @homepage        https://github.com/kamkie/native-taskbar-ungrouping
@@ -500,6 +500,23 @@ void WINAPI CTaskBand__UpdateItemIcon_Hook(PVOID pThis,
     g_inUpdateItemIcon = true;
     CTaskBand__UpdateItemIcon_Original(pThis, taskGroup, taskItem);
     g_inUpdateItemIcon = false;
+}
+
+// taskbar.dll 10.0.26100.9549 adds a pointer to icon variants. Keep the
+// vector opaque: it belongs to Explorer and must be forwarded unchanged.
+using CTaskBand__UpdateItemIconWithVariants_t = void(WINAPI*)(
+    PVOID pThis, PVOID taskGroup, PVOID taskItem, const void* iconVariants);
+CTaskBand__UpdateItemIconWithVariants_t
+    CTaskBand__UpdateItemIconWithVariants_Original;
+void WINAPI CTaskBand__UpdateItemIconWithVariants_Hook(
+    PVOID pThis, PVOID taskGroup, PVOID taskItem, const void* iconVariants) {
+    Wh_Log(L">");
+
+    const bool wasUpdatingItemIcon = g_inUpdateItemIcon;
+    g_inUpdateItemIcon = true;
+    CTaskBand__UpdateItemIconWithVariants_Original(
+        pThis, taskGroup, taskItem, iconVariants);
+    g_inUpdateItemIcon = wasUpdatingItemIcon;
 }
 
 using CTaskBand_Launch_t = HRESULT(WINAPI*)(PVOID pThis,
@@ -1212,6 +1229,13 @@ bool HookTaskbarSymbols() {
                 {LR"(protected: void __cdecl CTaskBand::_UpdateItemIcon(struct ITaskGroup *,struct ITaskItem *))"},
                 &CTaskBand__UpdateItemIcon_Original,
                 CTaskBand__UpdateItemIcon_Hook,
+                true,
+            },
+            {
+                {LR"(protected: void __cdecl CTaskBand::_UpdateItemIcon(struct ITaskGroup *,struct ITaskItem *,class std::vector<struct TaskbarIcon::Variant,class std::allocator<struct TaskbarIcon::Variant> > const *))"},
+                &CTaskBand__UpdateItemIconWithVariants_Original,
+                CTaskBand__UpdateItemIconWithVariants_Hook,
+                true,
             },
             {
                 {LR"(public: virtual long __cdecl CTaskBand::Launch(struct ITaskGroup *,struct tagPOINT const &,enum LaunchFromTaskbarOptions))"},
@@ -1308,6 +1332,13 @@ bool HookTaskbarSymbols() {
 
     if (!HookSymbols(module, taskbarDllHooks, ARRAYSIZE(taskbarDllHooks))) {
         Wh_Log(L"HookSymbols failed");
+        return false;
+    }
+
+    // Each signature is optional, but icon identity handling requires one.
+    if (!CTaskBand__UpdateItemIcon_Original &&
+        !CTaskBand__UpdateItemIconWithVariants_Original) {
+        Wh_Log(L"No supported CTaskBand::_UpdateItemIcon signature found");
         return false;
     }
 
