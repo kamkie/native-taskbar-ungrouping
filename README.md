@@ -38,8 +38,9 @@ doesn't contain Windows 10 or ExplorerPatcher compatibility paths.
 
 Version 2.1.2 also recognizes the `IconMetrics` signature used by Windows 11
 build 26300.9818, following upstream `taskbar-grouping` 1.3.12. The existing
-four-argument hook forwards the new vector unchanged. Runtime validation on
-that build is pending.
+four-argument hook forwards the new vector unchanged. On that build, the mod
+compiled, resolved the new symbol, and loaded into Explorer. Window grouping
+behavior has not yet been independently verified.
 
 - Windows 11 Pro 25H2, build 26200.9550, x64
 - Windhawk 2.0.0-alpha.6
