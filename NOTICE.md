@@ -19,3 +19,6 @@ settings-free behavior for Microsoft's native Windows 11 vertical taskbar:
 - updated deprecated Windhawk hook-wrapper calls for Windhawk 2.0.
 
 The complete work remains licensed under GPL-3.0.
+
+Version 2.1.2 incorporates the Windows build 26300.9818 icon-update symbol
+signature from `taskbar-grouping` 1.3.12 by Michael Maltsev.

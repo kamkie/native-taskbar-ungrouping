@@ -34,10 +34,16 @@ registry, taskbar XAML, labels, button dimensions, frame measurements,
 system-tray measurements, HWND size, or appbar reservation. The implementation
 doesn't contain Windows 10 or ExplorerPatcher compatibility paths.
 
-## Current target
+## Compatibility
 
-- Windows 11 Pro 25H2, build 26200.9550, x64
-- Windhawk 2.0.0-alpha.6
+Version 2.1.2 also recognizes the `IconMetrics` signature used by Windows 11
+build 26300.9818, following upstream `taskbar-grouping` 1.3.12. The existing
+four-argument hook forwards the new vector unchanged. On that build, the mod
+compiled, resolved the new symbol, and loaded into Explorer; the user
+confirmed that it works.
+
+- Windows 11 Pro 26H2, build 26300.9818, x64
+- Windhawk 2.0.0-alpha.8
 - Native taskbar position: Left or Right
 
 Version 2.1.1 supports the additional icon-variants argument in
