@@ -49,7 +49,7 @@ Maltsev (`m417z`). This version removes its settings and legacy-taskbar paths,
 activates only for Microsoft's native vertical taskbar, and keeps the compact
 combine presentation automatically. Both projects are licensed under GPL-3.0.
 
-Tested on Windows 11 25H2 build 26200.9278 (x64).
+Tested on Windows 11 26H2 build 26300.9818 (x64).
 */
 // ==/WindhawkModReadme==
 
