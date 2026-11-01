@@ -2,7 +2,7 @@
 // @id              native-taskbar-ungrouping
 // @name            Native Taskbar Ungrouping
 // @description     Give every window its own native Windows 11 taskbar button without changing the taskbar's native look.
-// @version         2.1.1
+// @version         2.1.2
 // @author          kamkie
 // @github          https://github.com/kamkie
 // @homepage        https://github.com/kamkie/native-taskbar-ungrouping
@@ -502,7 +502,7 @@ void WINAPI CTaskBand__UpdateItemIcon_Hook(PVOID pThis,
     g_inUpdateItemIcon = false;
 }
 
-// taskbar.dll 10.0.26100.9549 adds a pointer to icon variants. Keep the
+// Newer taskbar builds pass an icon variants or icon metrics vector. Keep the
 // vector opaque: it belongs to Explorer and must be forwarded unchanged.
 using CTaskBand__UpdateItemIconWithVariants_t = void(WINAPI*)(
     PVOID pThis, PVOID taskGroup, PVOID taskItem, const void* iconVariants);
@@ -1232,7 +1232,10 @@ bool HookTaskbarSymbols() {
                 true,
             },
             {
-                {LR"(protected: void __cdecl CTaskBand::_UpdateItemIcon(struct ITaskGroup *,struct ITaskItem *,class std::vector<struct TaskbarIcon::Variant,class std::allocator<struct TaskbarIcon::Variant> > const *))"},
+                {
+                    LR"(protected: void __cdecl CTaskBand::_UpdateItemIcon(struct ITaskGroup *,struct ITaskItem *,class std::vector<struct TaskbarIcon::IconMetrics,class std::allocator<struct TaskbarIcon::IconMetrics> > const *))",
+                    LR"(protected: void __cdecl CTaskBand::_UpdateItemIcon(struct ITaskGroup *,struct ITaskItem *,class std::vector<struct TaskbarIcon::Variant,class std::allocator<struct TaskbarIcon::Variant> > const *))",
+                },
                 &CTaskBand__UpdateItemIconWithVariants_Original,
                 CTaskBand__UpdateItemIconWithVariants_Hook,
                 true,
